@@ -18,7 +18,7 @@ const createAuthHeader = () => {
   return 'Basic ' + Buffer.from(`${apiKey}:${password}`).toString('base64');
 };
 
-// Function to fetch data from Shopify API
+// Function to fetch data from Shopify API with rate limiting
 const fetchFromShopify = async (url, options = {}) => {
   const response = await fetch(url, {
     ...options,
@@ -28,10 +28,18 @@ const fetchFromShopify = async (url, options = {}) => {
       ...(options.headers || {})
     }
   });
+
   if (!response.ok) {
     const text = await response.text(); // Retrieve response body text for debugging
+    if (response.status === 429) {
+      // Handle rate limiting error by retrying after a delay
+      console.warn('Rate limit exceeded. Retrying after 1 second...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return fetchFromShopify(url, options); // Retry the request
+    }
     throw new Error(`Failed to fetch data: ${response.statusText}. Response body: ${text}`);
   }
+
   return {
     data: await response.json(),
     headers: response.headers
