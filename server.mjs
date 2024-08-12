@@ -136,7 +136,6 @@ const processProducts = async (limit = 50) => {
     // Check if there is a next page
     const linkHeader = headers.get('link');
     if (linkHeader && linkHeader.includes('rel="next"')) {
-      // Extract the starting_after parameter from the link header
       const match = linkHeader.match(/starting_after=([^&]*)/);
       if (match) {
         startingAfter = match[1];
@@ -164,4 +163,33 @@ const processProducts = async (limit = 50) => {
             console.log(`Updated product fabric metafield for product ID ${product.id}`);
           } else {
             await createProductMetafield(product.id, fabricValue);
-            console.log(`Created product fabric metafi
+            console.log(`Created product fabric metafield for product ID ${product.id}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Error processing product ID ${product.id}:`, error);
+    }
+  }
+
+  console.log('Processed the specified number of products successfully');
+};
+
+// Define an API endpoint to trigger the update for a specific number of products
+app.get('/api/update-product-fabric', async (req, res) => {
+  const limit = parseInt(req.query.limit, 10) || 50; // Default to 50 products if not specified
+
+  try {
+    await processProducts(limit);
+    res.json({ message: `Product Fabric metafields updated successfully for ${limit} products.` });
+  } catch (error) {
+    console.error('Error updating Product Fabric metafields:', error);
+    res.status(500).json({ error: 'Failed to update Product Fabric metafields.' });
+  }
+});
+
+// Start the server
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
