@@ -121,58 +121,66 @@ const extractFabricValue = (htmlContent) => {
 
 // Function to process a fixed number of products
 const processProducts = async (limit = 50) => {
-  let products = [];
-  let startingAfter = null;
-  let totalFetched = 0;
+  let processedCount = 0;
+  let hasMoreProducts = true;
+  let lastProductId = null;
 
-  while (totalFetched < limit) {
-    const { data, headers } = await getProducts(50, startingAfter);
-    const fetchedProducts = data.products;
-    if (fetchedProducts.length === 0) break;
-
-    products = products.concat(fetchedProducts);
-    totalFetched += fetchedProducts.length;
-
-    // Check if there is a next page
-    const linkHeader = headers.get('link');
-    if (linkHeader && linkHeader.includes('rel="next"')) {
-      const match = linkHeader.match(/starting_after=([^&]*)/);
-      if (match) {
-        startingAfter = match[1];
-      } else {
-        break;
-      }
-    } else {
-      break;
-    }
-  }
-
-  // Process the fetched products up to the limit
-  for (const product of products.slice(0, limit)) {
+  while (hasMoreProducts && processedCount < limit) {
     try {
-      const metafields = await getProductMetafields(product.id);
-      const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
-      const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
+      const { data, headers } = await getProducts(lastProductId);
+      const products = data.products;
 
-      if (specificationsMetafield) {
-        const fabricValue = extractFabricValue(specificationsMetafield.value);
+      for (const product of products) {
+        if (processedCount >= limit) {
+          hasMoreProducts = false;
+          break;
+        }
 
-        if (fabricValue) {
-          if (productFabricMetafield) {
-            await updateProductMetafield(productFabricMetafield.id, fabricValue);
-            console.log(`Updated product fabric metafield for product ID ${product.id}`);
-          } else {
-            await createProductMetafield(product.id, fabricValue);
-            console.log(`Created product fabric metafield for product ID ${product.id}`);
+        const metafields = await getProductMetafields(product.id);
+        const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
+        const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
+
+        if (specificationsMetafield) {
+          const fabricValue = extractFabricValue(specificationsMetafield.value);
+
+          if (fabricValue) {
+            if (productFabricMetafield) {
+              await updateProductMetafield(productFabricMetafield.id, fabricValue);
+              console.log(`Updated product fabric metafield for product ID ${product.id}`);
+            } else {
+              await createProductMetafield(product.id, fabricValue);
+              console.log(`Created product fabric metafield for product ID ${product.id}`);
+            }
+          }
+        }
+
+        processedCount++;
+
+        // Handling rate limiting by checking Shopify's API call limits
+        const apiCallLimit = headers.get('X-Shopify-Shop-Api-Call-Limit');
+        if (apiCallLimit) {
+          const [usedCalls, maxCalls] = apiCallLimit.split('/').map(Number);
+          if (usedCalls >= maxCalls - 2) {
+            console.warn('Approaching rate limit. Waiting for 2 seconds...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
           }
         }
       }
+
+      // Check if there are more products to process
+      const linkHeader = headers.get('link');
+      if (linkHeader && linkHeader.includes('rel="next"')) {
+        lastProductId = products[products.length - 1].id;
+      } else {
+        hasMoreProducts = false;
+      }
     } catch (error) {
-      console.error(`Error processing product ID ${product.id}:`, error);
+      console.error('Error processing products:', error);
+      hasMoreProducts = false;
     }
   }
 
-  console.log('Processed the specified number of products successfully');
+  console.log(`Processed ${processedCount} products successfully.`);
 };
 
 // Define an API endpoint to trigger the update for a specific number of products
