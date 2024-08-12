@@ -19,29 +19,32 @@ const createAuthHeader = () => {
 };
 
 // Function to fetch from Shopify
-const fetchFromShopify = async (url) => {
+const fetchFromShopify = async (url, options = {}) => {
   const response = await fetch(url, {
+    ...options,
     headers: {
       'Authorization': createAuthHeader(),
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
     }
   });
-  if (!response.ok) throw new Error(`Failed to fetch data: ${response.statusText}`);
+  if (!response.ok) {
+    const text = await response.text(); // Retrieve response body text for debugging
+    throw new Error(`Failed to fetch data: ${response.statusText}. Response body: ${text}`);
+  }
   return response.json();
 };
 
 // Function to get products
 const getProducts = async (page = 1) => {
   const url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=250&page=${page}`;
-  const data = await fetchFromShopify(url);
-  return data.products;
+  return fetchFromShopify(url);
 };
 
 // Function to get product metafields
 const getProductMetafields = async (productId) => {
   const url = `https://${store}.myshopify.com/admin/api/2023-01/products/${productId}/metafields.json`;
-  const data = await fetchFromShopify(url);
-  return data.metafields;
+  return fetchFromShopify(url);
 };
 
 // Function to update product metafield
@@ -58,16 +61,14 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
 
   const response = await fetch(url, {
     method: 'PUT',
-    headers: {
-      'Authorization': createAuthHeader(),
-      'Content-Type': 'application/json'
-    },
     body: JSON.stringify(updatePayload)
   });
 
-  if (!response.ok) throw new Error(`Failed to update metafield: ${response.statusText}`);
-  const data = await response.json();
-  return data.metafield;
+  if (!response.ok) {
+    const text = await response.text(); // Retrieve response body text for debugging
+    throw new Error(`Failed to update metafield: ${response.statusText}. Response body: ${text}`);
+  }
+  return response.json();
 };
 
 // Function to create a new product metafield
@@ -87,16 +88,14 @@ const createProductMetafield = async (productId, fabricValue) => {
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': createAuthHeader(),
-      'Content-Type': 'application/json'
-    },
     body: JSON.stringify(createPayload)
   });
 
-  if (!response.ok) throw new Error(`Failed to create metafield: ${response.statusText}`);
-  const data = await response.json();
-  return data.metafield;
+  if (!response.ok) {
+    const text = await response.text(); // Retrieve response body text for debugging
+    throw new Error(`Failed to create metafield: ${response.statusText}. Response body: ${text}`);
+  }
+  return response.json();
 };
 
 // Function to extract fabric value from HTML content
