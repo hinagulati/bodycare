@@ -103,7 +103,7 @@ const processProducts = async () => {
 
   for (const product of products) {
     const metafields = await getProductMetafields(product.id);
-    const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'specifications');
+    const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
     const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
 
     if (specificationsMetafield) {
