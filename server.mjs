@@ -65,6 +65,7 @@ const getProductMetafields = async (productId) => {
 };
 
 // Function to update product metafield
+// Function to update product metafield
 const updateProductMetafield = async (metafieldId, fabricValue) => {
   const updatePayload = {
     "metafield": {
@@ -80,8 +81,15 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
     body: JSON.stringify(updatePayload)
   });
 
+  if (response && response.data && response.data.metafield) {
+    console.log(`Metafield updated successfully for ID: ${metafieldId}. New Value: ${response.data.metafield.value}`);
+  } else {
+    console.error(`Failed to update metafield for ID: ${metafieldId}. Response:`, response);
+  }
+
   return response.data.metafield;
 };
+
 
 // Function to create a new product metafield
 const createProductMetafield = async (productId, fabricValue) => {
@@ -102,9 +110,14 @@ const createProductMetafield = async (productId, fabricValue) => {
     body: JSON.stringify(createPayload)
   });
 
+  if (response && response.data && response.data.metafield) {
+    console.log(`Metafield created successfully for Product ID: ${productId}. Value: ${response.data.metafield.value}`);
+  } else {
+    console.error(`Failed to create metafield for Product ID: ${productId}. Response:`, response);
+  }
+
   return response.data.metafield;
 };
-
 // Function to extract fabric value from HTML content
 const extractFabricValue = (htmlContent) => {
   const $ = cheerio.load(htmlContent);
