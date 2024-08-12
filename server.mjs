@@ -20,35 +20,39 @@ const createAuthHeader = () => {
 
 // Function to fetch data from Shopify API with rate limiting
 const fetchFromShopify = async (url, options = {}) => {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Authorization': createAuthHeader(),
-      'Content-Type': 'application/json',
-      ...(options.headers || {})
-    }
-  });
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Authorization': createAuthHeader(),
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+      }
+    });
 
-  if (!response.ok) {
-    const text = await response.text();
-    if (response.status === 429) {
-      console.warn('Rate limit exceeded. Retrying after 1 second...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return fetchFromShopify(url, options);
+    const text = await response.text(); // Read the response text
+    if (!response.ok) {
+      if (response.status === 429) {
+        console.warn('Rate limit exceeded. Retrying after 1 second...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return fetchFromShopify(url, options); // Retry the request
+      }
+      throw new Error(`Failed to fetch data: ${response.statusText}. Response body: ${text}`);
     }
-    throw new Error(`Failed to fetch data: ${response.statusText}. Response body: ${text}`);
+
+    return {
+      data: JSON.parse(text),
+      headers: response.headers
+    };
+  } catch (error) {
+    console.error('Fetch error:', error);
+    throw error;
   }
-
-  return {
-    data: await response.json(),
-    headers: response.headers
-  };
 };
 
 // Function to get products with cursor-based pagination
 const getProducts = async (lastProductId = null, limit = 50) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
-
   if (lastProductId) {
     url += `&since_id=${lastProductId}`;
   }
@@ -65,7 +69,6 @@ const getProductMetafields = async (productId) => {
 };
 
 // Function to update product metafield
-// Function to update product metafield
 const updateProductMetafield = async (metafieldId, fabricValue) => {
   const updatePayload = {
     "metafield": {
@@ -76,20 +79,19 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
   };
 
   const url = `https://${store}.myshopify.com/admin/api/2023-01/metafields/${metafieldId}.json`;
-  const response = await fetchFromShopify(url, {
-    method: 'PUT',
-    body: JSON.stringify(updatePayload)
-  });
+  try {
+    const response = await fetchFromShopify(url, {
+      method: 'PUT',
+      body: JSON.stringify(updatePayload)
+    });
 
-  if (response && response.data && response.data.metafield) {
-    console.log(`Metafield updated successfully for ID: ${metafieldId}. New Value: ${response.data.metafield.value}`);
-  } else {
-    console.error(`Failed to update metafield for ID: ${metafieldId}. Response:`, response);
+    console.log('Update response:', response.data); // Log the update response
+    return response.data.metafield;
+  } catch (error) {
+    console.error('Error updating metafield:', error);
+    throw error;
   }
-
-  return response.data.metafield;
 };
-
 
 // Function to create a new product metafield
 const createProductMetafield = async (productId, fabricValue) => {
@@ -105,19 +107,20 @@ const createProductMetafield = async (productId, fabricValue) => {
   };
 
   const url = `https://${store}.myshopify.com/admin/api/2023-01/metafields.json`;
-  const response = await fetchFromShopify(url, {
-    method: 'POST',
-    body: JSON.stringify(createPayload)
-  });
+  try {
+    const response = await fetchFromShopify(url, {
+      method: 'POST',
+      body: JSON.stringify(createPayload)
+    });
 
-  if (response && response.data && response.data.metafield) {
-    console.log(`Metafield created successfully for Product ID: ${productId}. Value: ${response.data.metafield.value}`);
-  } else {
-    console.error(`Failed to create metafield for Product ID: ${productId}. Response:`, response);
+    console.log('Create response:', response.data); // Log the create response
+    return response.data.metafield;
+  } catch (error) {
+    console.error('Error creating metafield:', error);
+    throw error;
   }
-
-  return response.data.metafield;
 };
+
 // Function to extract fabric value from HTML content
 const extractFabricValue = (htmlContent) => {
   const $ = cheerio.load(htmlContent);
@@ -133,7 +136,6 @@ const extractFabricValue = (htmlContent) => {
   return fabric;
 };
 
-// Function to process a fixed number of products
 // Function to process a batch of products
 const processProducts = async (limit = 50) => {
   let processedCount = 0;
@@ -142,6 +144,7 @@ const processProducts = async (limit = 50) => {
   const processedProductIds = []; // Array to store processed product IDs
 
   while (hasMoreProducts && processedCount < limit) {
+    console.log("More products");
     try {
       const { data, headers } = await getProducts(lastProductId, limit);
       const products = data.products;
@@ -155,12 +158,14 @@ const processProducts = async (limit = 50) => {
         const metafields = await getProductMetafields(product.id);
         const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
         const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
-
+ console.log("specificationsMetafield More products");
         if (specificationsMetafield) {
           const fabricValue = extractFabricValue(specificationsMetafield.value);
 
           if (fabricValue) {
+            console.log("fabricValue More products");
             if (productFabricMetafield) {
+              console.log("productFabricMetafield More products");
               await updateProductMetafield(productFabricMetafield.id, fabricValue);
               console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
             } else {
@@ -204,7 +209,6 @@ const processProducts = async (limit = 50) => {
     console.log(`ID: ${product.id}, Title: ${product.title}`);
   });
 };
-
 
 // Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
