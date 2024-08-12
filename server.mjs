@@ -45,9 +45,13 @@ const fetchFromShopify = async (url, options = {}) => {
   };
 };
 
-// Function to get products (only one page, e.g., 50 products)
-const getProducts = async (page = 1) => {
-  const url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=50&page=${page}`;
+// Function to get products with cursor-based pagination
+const getProducts = async (limit = 50, startingAfter = null) => {
+  let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
+  if (startingAfter) {
+    url += `&starting_after=${startingAfter}`;
+  }
+
   const response = await fetchFromShopify(url);
   return response;
 };
@@ -115,12 +119,37 @@ const extractFabricValue = (htmlContent) => {
   return fabric;
 };
 
-// Function to process products on a single page
-const processProducts = async (page = 1) => {
-  const { data } = await getProducts(page);
-  const products = data.products;
+// Function to process a fixed number of products
+const processProducts = async (limit = 50) => {
+  let products = [];
+  let startingAfter = null;
+  let totalFetched = 0;
 
-  for (const product of products) {
+  while (totalFetched < limit) {
+    const { data, headers } = await getProducts(50, startingAfter);
+    const fetchedProducts = data.products;
+    if (fetchedProducts.length === 0) break;
+
+    products = products.concat(fetchedProducts);
+    totalFetched += fetchedProducts.length;
+
+    // Check if there is a next page
+    const linkHeader = headers.get('link');
+    if (linkHeader && linkHeader.includes('rel="next"')) {
+      // Extract the starting_after parameter from the link header
+      const match = linkHeader.match(/starting_after=([^&]*)/);
+      if (match) {
+        startingAfter = match[1];
+      } else {
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+
+  // Process the fetched products up to the limit
+  for (const product of products.slice(0, limit)) {
     try {
       const metafields = await getProductMetafields(product.id);
       const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
@@ -135,33 +164,4 @@ const processProducts = async (page = 1) => {
             console.log(`Updated product fabric metafield for product ID ${product.id}`);
           } else {
             await createProductMetafield(product.id, fabricValue);
-            console.log(`Created product fabric metafield for product ID ${product.id}`);
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Error processing product ID ${product.id}:`, error);
-    }
-  }
-
-  console.log('Products on page processed successfully');
-};
-
-// Define an API endpoint to trigger the update for a specific page
-app.get('/api/update-product-fabric', async (req, res) => {
-  const page = parseInt(req.query.page, 10) || 1; // Default to page 1 if not specified
-
-  try {
-    await processProducts(page);
-    res.json({ message: `Product Fabric metafields updated successfully for page ${page}.` });
-  } catch (error) {
-    console.error('Error updating Product Fabric metafields:', error);
-    res.status(500).json({ error: 'Failed to update Product Fabric metafields.' });
-  }
-});
-
-// Start the server
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+            console.log(`Created product fabric metafi
