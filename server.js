@@ -1,7 +1,7 @@
-const express = require('express');
-const fetch = require('node-fetch');
-const cheerio = require('cheerio');
-const cors = require('cors');
+import express from 'express';
+import fetch from 'node-fetch';
+import cheerio from 'cheerio';
+import cors from 'cors';
 
 const app = express();
 
