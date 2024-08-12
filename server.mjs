@@ -1,7 +1,7 @@
 import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
-import * as cheerio from 'cheerio';
+import * as cheerio from 'cheerio'; // Import cheerio once
 
 const app = express();
 
@@ -40,19 +40,28 @@ const fetchFromShopify = async (url, options = {}) => {
     throw new Error(`Failed to fetch data: ${response.statusText}. Response body: ${text}`);
   }
 
-  return response.json();
+  return {
+    data: await response.json(),
+    headers: response.headers
+  };
 };
 
-// Function to get products with pagination
-const getProducts = async (page = 1) => {
-  const url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=250&page=${page}`;
-  return fetchFromShopify(url);
+// Function to get products with cursor-based pagination
+const getProducts = async (startingAfter = null) => {
+  let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=250`;
+  if (startingAfter) {
+    url += `&starting_after=${startingAfter}`;
+  }
+
+  const response = await fetchFromShopify(url);
+  return response;
 };
 
 // Function to get product metafields
 const getProductMetafields = async (productId) => {
   const url = `https://${store}.myshopify.com/admin/api/2023-01/products/${productId}/metafields.json`;
-  return fetchFromShopify(url);
+  const response = await fetchFromShopify(url);
+  return response.data.metafields;
 };
 
 // Function to update product metafield
@@ -66,10 +75,12 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
   };
 
   const url = `https://${store}.myshopify.com/admin/api/2023-01/metafields/${metafieldId}.json`;
-  return fetchFromShopify(url, {
+  const response = await fetchFromShopify(url, {
     method: 'PUT',
     body: JSON.stringify(updatePayload)
   });
+
+  return response.data.metafield;
 };
 
 // Function to create a new product metafield
@@ -86,10 +97,12 @@ const createProductMetafield = async (productId, fabricValue) => {
   };
 
   const url = `https://${store}.myshopify.com/admin/api/2023-01/metafields.json`;
-  return fetchFromShopify(url, {
+  const response = await fetchFromShopify(url, {
     method: 'POST',
     body: JSON.stringify(createPayload)
   });
+
+  return response.data.metafield;
 };
 
 // Function to extract fabric value from HTML content
@@ -107,42 +120,50 @@ const extractFabricValue = (htmlContent) => {
   return fabric;
 };
 
-// Function to process products in batches
+// Function to process all products
 const processProducts = async () => {
-  let page = 1;
-  let hasMore = true;
+  let products = [];
+  let startingAfter = null;
 
-  while (hasMore) {
-    const { products } = await getProducts(page);
+  while (true) {
+    const { data, headers } = await getProducts(startingAfter);
+    const fetchedProducts = data.products;
+    if (fetchedProducts.length === 0) break;
 
-    if (products.length === 0) {
-      hasMore = false;
+    products = products.concat(fetchedProducts);
+
+    // Check if there is a next page
+    const linkHeader = headers.get('link');
+    if (linkHeader && linkHeader.includes('rel="next"')) {
+      // Extract the starting_after parameter from the link header
+      const match = linkHeader.match(/starting_after=([^&]*)/);
+      if (match) {
+        startingAfter = match[1];
+      } else {
+        break;
+      }
     } else {
-      for (const product of products) {
-        try {
-          const metafields = await getProductMetafields(product.id);
-          const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
-          const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
+      break;
+    }
+  }
 
-          if (specificationsMetafield) {
-            const fabricValue = extractFabricValue(specificationsMetafield.value);
+  for (const product of products) {
+    const metafields = await getProductMetafields(product.id);
+    const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
+    const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
 
-            if (fabricValue) {
-              if (productFabricMetafield) {
-                await updateProductMetafield(productFabricMetafield.id, fabricValue);
-                console.log(`Updated product fabric metafield for product ID ${product.id}`);
-              } else {
-                await createProductMetafield(product.id, fabricValue);
-                console.log(`Created product fabric metafield for product ID ${product.id}`);
-              }
-            }
-          }
-        } catch (error) {
-          console.error(`Error processing product ID ${product.id}:`, error);
+    if (specificationsMetafield) {
+      const fabricValue = extractFabricValue(specificationsMetafield.value);
+
+      if (fabricValue) {
+        if (productFabricMetafield) {
+          await updateProductMetafield(productFabricMetafield.id, fabricValue);
+          console.log(`Updated product fabric metafield for product ID ${product.id}`);
+        } else {
+          await createProductMetafield(product.id, fabricValue);
+          console.log(`Created product fabric metafield for product ID ${product.id}`);
         }
       }
-
-      page++;
     }
   }
 
