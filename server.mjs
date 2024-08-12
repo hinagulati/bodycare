@@ -121,10 +121,12 @@ const extractFabricValue = (htmlContent) => {
 };
 
 // Function to process a fixed number of products
+// Function to process a batch of products
 const processProducts = async (limit = 50) => {
   let processedCount = 0;
   let hasMoreProducts = true;
   let lastProductId = null;
+  const processedProductIds = []; // Array to store processed product IDs
 
   while (hasMoreProducts && processedCount < limit) {
     try {
@@ -147,14 +149,16 @@ const processProducts = async (limit = 50) => {
           if (fabricValue) {
             if (productFabricMetafield) {
               await updateProductMetafield(productFabricMetafield.id, fabricValue);
-              console.log(`Updated product fabric metafield for product ID ${product.id}`);
+              console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
             } else {
               await createProductMetafield(product.id, fabricValue);
-              console.log(`Created product fabric metafield for product ID ${product.id}`);
+              console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
             }
           }
         }
 
+        // Log the processed product ID and title
+        processedProductIds.push({ id: product.id, title: product.title });
         processedCount++;
 
         // Handling rate limiting by checking Shopify's API call limits
@@ -181,8 +185,13 @@ const processProducts = async (limit = 50) => {
     }
   }
 
-  console.log(`Processed ${processedCount} products successfully.`);
+  // Log the list of processed products
+  console.log(`Processed ${processedCount} products successfully. Product details:`);
+  processedProductIds.forEach(product => {
+    console.log(`ID: ${product.id}, Title: ${product.title}`);
+  });
 };
+
 
 // Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
