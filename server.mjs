@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 
 // Your Shopify store credentials
-const store = 'your-store-name'; // Replace with your actual store subdomain
+const store = '3931fc-56'; // Replace with your actual store subdomain
 const apiKey = '9f021b4d77cce9c6844781c82d4b2b7d';
 const password = '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';
 
