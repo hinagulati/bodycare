@@ -160,6 +160,7 @@ const processProducts = async (limit = 50) => {
         const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
  console.log("specificationsMetafield More products");
         if (specificationsMetafield) {
+           console.log("extractFabricValue More products");
           const fabricValue = extractFabricValue(specificationsMetafield.value);
 
           if (fabricValue) {
