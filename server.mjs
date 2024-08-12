@@ -1,7 +1,7 @@
 import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
-import * as cheerio from 'cheerio'; // Import cheerio once
+import * as cheerio from 'cheerio';
 
 const app = express();
 
@@ -47,10 +47,10 @@ const fetchFromShopify = async (url, options = {}) => {
 };
 
 // Function to get products with cursor-based pagination
-const getProducts = async (startingAfter = null) => {
+const getProducts = async (pageInfo = null) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=250`;
-  if (startingAfter) {
-    url += `&starting_after=${startingAfter}`;
+  if (pageInfo) {
+    url += `&page_info=${pageInfo}`;
   }
 
   const response = await fetchFromShopify(url);
@@ -123,10 +123,10 @@ const extractFabricValue = (htmlContent) => {
 // Function to process all products
 const processProducts = async () => {
   let products = [];
-  let startingAfter = null;
+  let pageInfo = null;
 
   while (true) {
-    const { data, headers } = await getProducts(startingAfter);
+    const { data, headers } = await getProducts(pageInfo);
     const fetchedProducts = data.products;
     if (fetchedProducts.length === 0) break;
 
@@ -135,10 +135,9 @@ const processProducts = async () => {
     // Check if there is a next page
     const linkHeader = headers.get('link');
     if (linkHeader && linkHeader.includes('rel="next"')) {
-      // Extract the starting_after parameter from the link header
-      const match = linkHeader.match(/starting_after=([^&]*)/);
+      const match = linkHeader.match(/page_info=([^&]*)/);
       if (match) {
-        startingAfter = match[1];
+        pageInfo = match[1];
       } else {
         break;
       }
@@ -148,22 +147,26 @@ const processProducts = async () => {
   }
 
   for (const product of products) {
-    const metafields = await getProductMetafields(product.id);
-    const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
-    const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
+    try {
+      const metafields = await getProductMetafields(product.id);
+      const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
+      const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
 
-    if (specificationsMetafield) {
-      const fabricValue = extractFabricValue(specificationsMetafield.value);
+      if (specificationsMetafield) {
+        const fabricValue = extractFabricValue(specificationsMetafield.value);
 
-      if (fabricValue) {
-        if (productFabricMetafield) {
-          await updateProductMetafield(productFabricMetafield.id, fabricValue);
-          console.log(`Updated product fabric metafield for product ID ${product.id}`);
-        } else {
-          await createProductMetafield(product.id, fabricValue);
-          console.log(`Created product fabric metafield for product ID ${product.id}`);
+        if (fabricValue) {
+          if (productFabricMetafield) {
+            await updateProductMetafield(productFabricMetafield.id, fabricValue);
+            console.log(`Updated product fabric metafield for product ID ${product.id}`);
+          } else {
+            await createProductMetafield(product.id, fabricValue);
+            console.log(`Created product fabric metafield for product ID ${product.id}`);
+          }
         }
       }
+    } catch (error) {
+      console.error(`Error processing product ID ${product.id}:`, error);
     }
   }
 
