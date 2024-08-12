@@ -1,12 +1,17 @@
 import express from 'express';
 import fetch from 'node-fetch';
-const cheerio = require('cheerio');
+
 import cors from 'cors';
 
 const app = express();
 
 // Enable CORS for all origins
 app.use(cors());
+
+async function loadCheerio() {
+  const cheerio = await import('cheerio');
+  return cheerio;
+}
 
 // Your Shopify store credentials
 const store = '3931fc-56';
@@ -76,6 +81,7 @@ const createProductMetafield = async (productId, fabricValue) => {
 
 // Function to extract fabric value from HTML content
 const extractFabricValue = (htmlContent) => {
+   const cheerio = await loadCheerio();
   const $ = cheerio.load(htmlContent);
   let fabric = '';
 
