@@ -1,29 +1,46 @@
 import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
-import * as cheerio from 'cheerio'; // Import cheerio once
+import * as cheerio from 'cheerio';
 
 const app = express();
 
 // Enable CORS for all origins
 app.use(cors());
 
-// Your Shopify store credentials
+// Shopify store credentials
 const store = '3931fc-56'; // Replace with your actual store subdomain
 const apiKey = '9f021b4d77cce9c6844781c82d4b2b7d';
 const password = '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';
 
+// Function to create the basic authentication header
+const createAuthHeader = () => {
+  return `Basic ${Buffer.from(`${apiKey}:${password}`).toString('base64')}`;
+};
+
+// Function to fetch from Shopify
+const fetchFromShopify = async (url) => {
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': createAuthHeader(),
+      'Content-Type': 'application/json'
+    }
+  });
+  if (!response.ok) throw new Error(`Failed to fetch data: ${response.statusText}`);
+  return response.json();
+};
+
 // Function to get products
 const getProducts = async (page = 1) => {
-  const response = await fetch(`https://${apiKey}:${password}@${store}.myshopify.com/admin/api/2023-01/products.json?limit=250&page=${page}`);
-  const data = await response.json();
+  const url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=250&page=${page}`;
+  const data = await fetchFromShopify(url);
   return data.products;
 };
 
 // Function to get product metafields
 const getProductMetafields = async (productId) => {
-  const response = await fetch(`https://${apiKey}:${password}@${store}.myshopify.com/admin/api/2023-01/products/${productId}/metafields.json`);
-  const data = await response.json();
+  const url = `https://${store}.myshopify.com/admin/api/2023-01/products/${productId}/metafields.json`;
+  const data = await fetchFromShopify(url);
   return data.metafields;
 };
 
@@ -37,14 +54,18 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
     }
   };
 
-  const response = await fetch(`https://${apiKey}:${password}@${store}.myshopify.com/admin/api/2023-01/metafields/${metafieldId}.json`, {
+  const url = `https://${store}.myshopify.com/admin/api/2023-01/metafields/${metafieldId}.json`;
+
+  const response = await fetch(url, {
     method: 'PUT',
     headers: {
+      'Authorization': createAuthHeader(),
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(updatePayload)
   });
 
+  if (!response.ok) throw new Error(`Failed to update metafield: ${response.statusText}`);
   const data = await response.json();
   return data.metafield;
 };
@@ -62,14 +83,18 @@ const createProductMetafield = async (productId, fabricValue) => {
     }
   };
 
-  const response = await fetch(`https://${apiKey}:${password}@${store}.myshopify.com/admin/api/2023-01/metafields.json`, {
+  const url = `https://${store}.myshopify.com/admin/api/2023-01/metafields.json`;
+
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
+      'Authorization': createAuthHeader(),
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(createPayload)
   });
 
+  if (!response.ok) throw new Error(`Failed to create metafield: ${response.statusText}`);
   const data = await response.json();
   return data.metafield;
 };
@@ -81,8 +106,8 @@ const extractFabricValue = (htmlContent) => {
 
   $('#tab-attribute .attribute tbody tr').each((index, element) => {
     const cells = $(element).find('td');
-    if (cells.eq(0).text() === 'Fabric') {
-      fabric = cells.eq(1).text();
+    if (cells.eq(0).text().trim() === 'Fabric') {
+      fabric = cells.eq(1).text().trim();
     }
   });
 
@@ -130,8 +155,8 @@ app.get('/api/update-product-fabric', async (req, res) => {
     await processProducts();
     res.json({ message: 'Product Fabric metafields updated successfully.' });
   } catch (error) {
-    console.error('Error updating Product Fabric metafields:', error);
-    res.status(500).json({ error: 'Failed to update Product Fabric metafields.' });
+    console.error('Error updating Product Fabric metafields:', error.message);
+    res.status(500).json({ error: 'Failed to update Product Fabric metafields.', details: error.message });
   }
 });
 
