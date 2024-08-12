@@ -1,7 +1,7 @@
 import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
-import * as cheerio from 'cheerio'; // Import cheerio once
+import * as cheerio from 'cheerio';
 
 const app = express();
 
@@ -30,12 +30,11 @@ const fetchFromShopify = async (url, options = {}) => {
   });
 
   if (!response.ok) {
-    const text = await response.text(); // Retrieve response body text for debugging
+    const text = await response.text();
     if (response.status === 429) {
-      // Handle rate limiting error by retrying after a delay
       console.warn('Rate limit exceeded. Retrying after 1 second...');
       await new Promise(resolve => setTimeout(resolve, 1000));
-      return fetchFromShopify(url, options); // Retry the request
+      return fetchFromShopify(url, options);
     }
     throw new Error(`Failed to fetch data: ${response.statusText}. Response body: ${text}`);
   }
@@ -46,13 +45,9 @@ const fetchFromShopify = async (url, options = {}) => {
   };
 };
 
-// Function to get products with cursor-based pagination
-const getProducts = async (startingAfter = null) => {
-  let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=250`;
-  if (startingAfter) {
-    url += `&starting_after=${startingAfter}`;
-  }
-
+// Function to get products (only one page, e.g., 50 products)
+const getProducts = async (page = 1) => {
+  const url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=50&page=${page}`;
   const response = await fetchFromShopify(url);
   return response;
 };
@@ -120,61 +115,45 @@ const extractFabricValue = (htmlContent) => {
   return fabric;
 };
 
-// Function to process all products
-const processProducts = async () => {
-  let products = [];
-  let startingAfter = null;
-
-  while (true) {
-    const { data, headers } = await getProducts(startingAfter);
-    const fetchedProducts = data.products;
-    if (fetchedProducts.length === 0) break;
-
-    products = products.concat(fetchedProducts);
-
-    // Check if there is a next page
-    const linkHeader = headers.get('link');
-    if (linkHeader && linkHeader.includes('rel="next"')) {
-      // Extract the starting_after parameter from the link header
-      const match = linkHeader.match(/starting_after=([^&]*)/);
-      if (match) {
-        startingAfter = match[1];
-      } else {
-        break;
-      }
-    } else {
-      break;
-    }
-  }
+// Function to process products on a single page
+const processProducts = async (page = 1) => {
+  const { data } = await getProducts(page);
+  const products = data.products;
 
   for (const product of products) {
-    const metafields = await getProductMetafields(product.id);
-    const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
-    const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
+    try {
+      const metafields = await getProductMetafields(product.id);
+      const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
+      const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
 
-    if (specificationsMetafield) {
-      const fabricValue = extractFabricValue(specificationsMetafield.value);
+      if (specificationsMetafield) {
+        const fabricValue = extractFabricValue(specificationsMetafield.value);
 
-      if (fabricValue) {
-        if (productFabricMetafield) {
-          await updateProductMetafield(productFabricMetafield.id, fabricValue);
-          console.log(`Updated product fabric metafield for product ID ${product.id}`);
-        } else {
-          await createProductMetafield(product.id, fabricValue);
-          console.log(`Created product fabric metafield for product ID ${product.id}`);
+        if (fabricValue) {
+          if (productFabricMetafield) {
+            await updateProductMetafield(productFabricMetafield.id, fabricValue);
+            console.log(`Updated product fabric metafield for product ID ${product.id}`);
+          } else {
+            await createProductMetafield(product.id, fabricValue);
+            console.log(`Created product fabric metafield for product ID ${product.id}`);
+          }
         }
       }
+    } catch (error) {
+      console.error(`Error processing product ID ${product.id}:`, error);
     }
   }
 
-  console.log('All products processed successfully');
+  console.log('Products on page processed successfully');
 };
 
-// Define an API endpoint to trigger the update
+// Define an API endpoint to trigger the update for a specific page
 app.get('/api/update-product-fabric', async (req, res) => {
+  const page = parseInt(req.query.page, 10) || 1; // Default to page 1 if not specified
+
   try {
-    await processProducts();
-    res.json({ message: 'Product Fabric metafields updated successfully.' });
+    await processProducts(page);
+    res.json({ message: `Product Fabric metafields updated successfully for page ${page}.` });
   } catch (error) {
     console.error('Error updating Product Fabric metafields:', error);
     res.status(500).json({ error: 'Failed to update Product Fabric metafields.' });
