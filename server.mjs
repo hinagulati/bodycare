@@ -50,9 +50,9 @@ const fetchFromShopify = async (url, options = {}) => {
   }
 };
 
-// Function to get products with a fixed limit
-const getProducts = async (limit = 250) => {
-  const url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
+// Function to get products with pagination
+const getProducts = async (limit = 250, pageNumber = 1) => {
+  const url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}&page=${pageNumber}`;
   const response = await fetchFromShopify(url);
   return response;
 };
@@ -131,82 +131,85 @@ const extractFabricValue = (htmlContent) => {
 };
 
 // Function to process a batch of products
-// Function to process a batch of products
-const processProductsBatch = async (batchSize) => {
+const processProductsBatch = async (batchSize, pageNumber) => {
   let processedCount = 0;
   let hasMoreProducts = true;
-  let pageNumber = 2; // Start from the first page
 
-  while (hasMoreProducts) {
-    console.log(`Processing batch ${pageNumber}...`);
-    try {
-      const { data, headers } = await getProducts(batchSize);
-      const products = data.products;
+  console.log(`Processing page ${pageNumber}...`);
+  try {
+    const { data, headers } = await getProducts(batchSize, pageNumber);
+    const products = data.products;
 
-      if (products.length === 0) {
+    if (products.length === 0) {
+      hasMoreProducts = false;
+      return { processedCount, hasMoreProducts };
+    }
+
+    for (const product of products) {
+      if (processedCount >= batchSize) {
         hasMoreProducts = false;
         break;
       }
 
-      for (const product of products) {
-        if (processedCount >= batchSize) {
-          hasMoreProducts = false;
-          break;
-        }
+      const metafields = await getProductMetafields(product.id);
+      const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
+      const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
 
-        const metafields = await getProductMetafields(product.id);
-        const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
-        const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
+      if (specificationsMetafield) {
+        const fabricValue = extractFabricValue(specificationsMetafield.value);
+        console.log("fabricValue:", fabricValue);
 
-        if (specificationsMetafield) {
-          const fabricValue = extractFabricValue(specificationsMetafield.value);
-          console.log("fabricValue:", fabricValue);
-
-          if (fabricValue && fabricValue.trim() !== "") {
-            if (productFabricMetafield) {
-              await updateProductMetafield(productFabricMetafield.id, fabricValue);
-              console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
-            } else {
-              await createProductMetafield(product.id, fabricValue);
-              console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
-            }
+        if (fabricValue && fabricValue.trim() !== "") {
+          if (productFabricMetafield) {
+            await updateProductMetafield(productFabricMetafield.id, fabricValue);
+            console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
           } else {
-            console.log(`Skipping product ID ${product.id} (Title: ${product.title}) due to empty fabricValue.`);
+            await createProductMetafield(product.id, fabricValue);
+            console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
           }
-        }
-
-        // Log the processed product ID and title
-        processedCount++;
-
-        // Handling rate limiting by checking Shopify's API call limits
-        const apiCallLimit = headers.get('X-Shopify-Shop-Api-Call-Limit');
-        if (apiCallLimit) {
-          const [usedCalls, maxCalls] = apiCallLimit.split('/').map(Number);
-          if (usedCalls >= maxCalls - 2) {
-            console.warn('Approaching rate limit. Waiting for 2 seconds...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
+        } else {
+          console.log(`Skipping product ID ${product.id} (Title: ${product.title}) due to empty fabricValue.`);
         }
       }
 
-      // Move to the next page
-      pageNumber++;
-    } catch (error) {
-      console.error('Error processing products:', error);
-      hasMoreProducts = false;
-    }
-  }
+      // Log the processed product ID and title
+      processedCount++;
 
-  console.log(`Processed ${processedCount} products successfully.`);
+      // Handling rate limiting by checking Shopify's API call limits
+      const apiCallLimit = headers.get('X-Shopify-Shop-Api-Call-Limit');
+      if (apiCallLimit) {
+        const [usedCalls, maxCalls] = apiCallLimit.split('/').map(Number);
+        if (usedCalls >= maxCalls - 2) {
+          console.warn('Approaching rate limit. Waiting for 2 seconds...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+    }
+
+    // Return the status and next page number
+    return {
+      processedCount,
+      hasMoreProducts: products.length === batchSize
+    };
+  } catch (error) {
+    console.error('Error processing products:', error);
+    return { processedCount, hasMoreProducts: false };
+  }
 };
 
 // Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
   const batchSize = parseInt(req.query.batchSize, 10) || 250; // Default to 250 products if not specified
+  const pageNumber = parseInt(req.query.page, 10) || 1; // Default to page 1 if not specified
 
   try {
-    await processProductsBatch(batchSize);
-    res.json({ message: `Product Fabric metafields updated successfully for batch size of ${batchSize}.` });
+    const { processedCount, hasMoreProducts } = await processProductsBatch(batchSize, pageNumber);
+    const nextPageNumber = hasMoreProducts ? pageNumber + 1 : null;
+
+    res.json({
+      message: `Product Fabric metafields updated successfully for batch size of ${batchSize}.`,
+      pageInfo: nextPageNumber
+    });
   } catch (error) {
     console.error('Error updating product fabric:', error);
     res.status(500).json({ error: 'Error updating product fabric' });
