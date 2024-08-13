@@ -50,7 +50,7 @@ const fetchFromShopify = async (url, options = {}) => {
   }
 };
 
-// Function to get products with pagination
+// Function to get products with cursor-based pagination
 const getProducts = async (pageInfo = null, limit = 250) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
   if (pageInfo) {
@@ -85,7 +85,6 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
       body: JSON.stringify(updatePayload)
     });
 
-    // console.log('Update response:', response.data); // Log the update response
     return response.data.metafield;
   } catch (error) {
     console.error('Error updating metafield:', error);
@@ -113,7 +112,6 @@ const createProductMetafield = async (productId, fabricValue) => {
       body: JSON.stringify(createPayload)
     });
 
-    console.log('Create response:', response.data); // Log the create response
     return response.data.metafield;
   } catch (error) {
     console.error('Error creating metafield:', error);
@@ -126,7 +124,6 @@ const extractFabricValue = (htmlContent) => {
   const $ = cheerio.load(htmlContent);
   let fabric = '';
 
-  // Adjusted selector to match the structure provided
   $('table.attribute tbody tr').each((index, element) => {
     const cells = $(element).find('td');
     if (cells.eq(0).text().trim() === 'Fabric') {
@@ -164,19 +161,15 @@ const processProducts = async (limit = 250, pageInfo = null) => {
         const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
         const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
 
-        // console.log(specificationsMetafield);
-
         if (specificationsMetafield) {
           const fabricValue = extractFabricValue(specificationsMetafield.value);
           console.log("fabricValue:", fabricValue);
 
           if (fabricValue && fabricValue.trim() !== "") {
             if (productFabricMetafield) {
-              // console.log("Updating productFabricMetafield");
-              // await updateProductMetafield(productFabricMetafield.id, fabricValue);
+              await updateProductMetafield(productFabricMetafield.id, fabricValue);
               console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
             } else {
-              console.log("Creating productFabricMetafield");
               await createProductMetafield(product.id, fabricValue);
               console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
             }
@@ -203,9 +196,13 @@ const processProducts = async (limit = 250, pageInfo = null) => {
       // Check if there are more products to process
       const linkHeader = headers.get('link');
       if (linkHeader && linkHeader.includes('rel="next"')) {
-        // Parse page_info from the link header
-        const matches = linkHeader.match(/page_info=([^&]*)/);
-        pageInfo = matches ? decodeURIComponent(matches[1]) : null;
+        const nextPageLink = linkHeader.split(',').find(link => link.includes('rel="next"'));
+        if (nextPageLink) {
+          const match = nextPageLink.match(/page_info=([^&]*)/);
+          pageInfo = match ? match[1] : null;
+        } else {
+          hasMoreProducts = false;
+        }
       } else {
         hasMoreProducts = false;
       }
@@ -220,7 +217,7 @@ const processProducts = async (limit = 250, pageInfo = null) => {
   processedProductIds.forEach(product => {
     console.log(`ID: ${product.id}, Title: ${product.title}`);
   });
-console.log(pageInfo);
+
   // Return pageInfo to be used by the client
   return pageInfo;
 };
@@ -228,7 +225,7 @@ console.log(pageInfo);
 // Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 250; // Default to 250 products if not specified
-  const pageInfo = req.query.pageInfo || null; // Ensure pageInfo is passed as a string
+  const pageInfo = req.query.pageInfo || null;
 
   try {
     const newPageInfo = await processProducts(limit, pageInfo);
