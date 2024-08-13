@@ -131,15 +131,16 @@ const extractFabricValue = (htmlContent) => {
 };
 
 // Function to process a batch of products
+// Function to process a batch of products
 const processProductsBatch = async (batchSize) => {
   let processedCount = 0;
   let hasMoreProducts = true;
-  let pageNumber = 2; // Start from the first page
+  let pageNumber = 1; // Start from the first page
 
   while (hasMoreProducts) {
     console.log(`Processing batch ${pageNumber}...`);
     try {
-      const { data } = await getProducts(batchSize);
+      const { data, headers } = await getProducts(batchSize);
       const products = data.products;
 
       if (products.length === 0) {
@@ -178,7 +179,7 @@ const processProductsBatch = async (batchSize) => {
         processedCount++;
 
         // Handling rate limiting by checking Shopify's API call limits
-        const apiCallLimit = response.headers.get('X-Shopify-Shop-Api-Call-Limit');
+        const apiCallLimit = headers.get('X-Shopify-Shop-Api-Call-Limit');
         if (apiCallLimit) {
           const [usedCalls, maxCalls] = apiCallLimit.split('/').map(Number);
           if (usedCalls >= maxCalls - 2) {
