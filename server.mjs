@@ -163,7 +163,7 @@ const processProducts = async (limit = 50) => {
          
           const fabricValue = extractFabricValue(specificationsMetafield.value);
   console.log("extractFabricValue1 More products");
-          if (fabricValue) {
+         
             console.log("fabricValue More products");
             if (productFabricMetafield) {
               console.log("productFabricMetafield More products");
@@ -173,7 +173,7 @@ const processProducts = async (limit = 50) => {
               await createProductMetafield(product.id, fabricValue);
               console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
             }
-          }
+         
         }
 
         // Log the processed product ID and title
