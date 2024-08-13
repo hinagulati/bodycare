@@ -54,7 +54,7 @@ const fetchFromShopify = async (url, options = {}) => {
 const getProducts = async (pageInfo = null, limit = 250) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
   if (pageInfo) {
-    url += `&page_info=${pageInfo}`;
+    url += `&page_info=${encodeURIComponent(pageInfo)}`;
   }
 
   const response = await fetchFromShopify(url);
@@ -199,7 +199,7 @@ const processProducts = async (limit = 250, pageInfo = null) => {
         const nextPageLink = linkHeader.split(',').find(link => link.includes('rel="next"'));
         if (nextPageLink) {
           const match = nextPageLink.match(/page_info=([^&]*)/);
-          pageInfo = match ? match[1] : null;
+          pageInfo = match ? decodeURIComponent(match[1]) : null;
         } else {
           hasMoreProducts = false;
         }
@@ -231,13 +231,13 @@ app.get('/api/update-product-fabric', async (req, res) => {
     const newPageInfo = await processProducts(limit, pageInfo);
     res.json({ message: `Product Fabric metafields updated successfully for ${limit} products.`, pageInfo: newPageInfo });
   } catch (error) {
-    console.error('Error updating Product Fabric metafields:', error);
-    res.status(500).json({ error: 'Failed to update Product Fabric metafields.' });
+    console.error('Error updating product fabric:', error);
+    res.status(500).json({ error: 'Error updating product fabric' });
   }
 });
 
 // Start the server
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
