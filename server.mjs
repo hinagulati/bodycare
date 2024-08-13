@@ -50,12 +50,11 @@ const fetchFromShopify = async (url, options = {}) => {
   }
 };
 
-// Function to get products with cursor-based pagination
-const getProducts = async (lastProductId = null, limit = 250) => {
+// Function to get products with pagination
+const getProducts = async (pageInfo = null, limit = 250) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
-  if (lastProductId) {
-    // Convert lastProductId to a number
-    url += `&since_id=${parseInt(lastProductId, 10)}`;
+  if (pageInfo) {
+    url += `&page_info=${pageInfo}`;
   }
 
   const response = await fetchFromShopify(url);
@@ -86,7 +85,7 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
       body: JSON.stringify(updatePayload)
     });
 
-    //console.log('Update response:', response.data); // Log the update response
+    // console.log('Update response:', response.data); // Log the update response
     return response.data.metafield;
   } catch (error) {
     console.error('Error updating metafield:', error);
@@ -139,7 +138,7 @@ const extractFabricValue = (htmlContent) => {
 };
 
 // Function to process a batch of products
-const processProducts = async (limit = 250, lastProductId = null) => {
+const processProducts = async (limit = 250, pageInfo = null) => {
   let processedCount = 0;
   let hasMoreProducts = true;
   const processedProductIds = []; // Array to store processed product IDs
@@ -147,7 +146,7 @@ const processProducts = async (limit = 250, lastProductId = null) => {
   while (hasMoreProducts && processedCount < limit) {
     console.log("Processing more products...");
     try {
-      const { data, headers } = await getProducts(lastProductId, limit);
+      const { data, headers } = await getProducts(pageInfo, limit);
       const products = data.products;
 
       if (products.length === 0) {
@@ -165,7 +164,7 @@ const processProducts = async (limit = 250, lastProductId = null) => {
         const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
         const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
 
-        //console.log(specificationsMetafield);
+        // console.log(specificationsMetafield);
 
         if (specificationsMetafield) {
           const fabricValue = extractFabricValue(specificationsMetafield.value);
@@ -173,8 +172,8 @@ const processProducts = async (limit = 250, lastProductId = null) => {
 
           if (fabricValue && fabricValue.trim() !== "") {
             if (productFabricMetafield) {
-              //console.log("Updating productFabricMetafield");
-              //await updateProductMetafield(productFabricMetafield.id, fabricValue);
+              // console.log("Updating productFabricMetafield");
+              // await updateProductMetafield(productFabricMetafield.id, fabricValue);
               console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
             } else {
               console.log("Creating productFabricMetafield");
@@ -204,7 +203,9 @@ const processProducts = async (limit = 250, lastProductId = null) => {
       // Check if there are more products to process
       const linkHeader = headers.get('link');
       if (linkHeader && linkHeader.includes('rel="next"')) {
-        lastProductId = products[products.length - 1].id;
+        // Parse page_info from the link header
+        const matches = linkHeader.match(/page_info=([^&]*)/);
+        pageInfo = matches ? decodeURIComponent(matches[1]) : null;
       } else {
         hasMoreProducts = false;
       }
@@ -219,19 +220,19 @@ const processProducts = async (limit = 250, lastProductId = null) => {
   processedProductIds.forEach(product => {
     console.log(`ID: ${product.id}, Title: ${product.title}`);
   });
-
-  // Return lastProductId to be used by the client
-  return lastProductId;
+console.log(pageInfo);
+  // Return pageInfo to be used by the client
+  return pageInfo;
 };
 
 // Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
-  const limit = parseInt(req.query.limit, 10) || 250; // Default to 100 products if not specified
-  const lastProductId = req.query.lastProductId ? parseInt(req.query.lastProductId, 10) : null; // Ensure lastProductId is an integer
+  const limit = parseInt(req.query.limit, 10) || 250; // Default to 250 products if not specified
+  const pageInfo = req.query.pageInfo || null; // Ensure pageInfo is passed as a string
 
   try {
-    const newLastProductId = await processProducts(limit, lastProductId);
-    res.json({ message: `Product Fabric metafields updated successfully for ${limit} products.`, lastProductId: newLastProductId });
+    const newPageInfo = await processProducts(limit, pageInfo);
+    res.json({ message: `Product Fabric metafields updated successfully for ${limit} products.`, pageInfo: newPageInfo });
   } catch (error) {
     console.error('Error updating Product Fabric metafields:', error);
     res.status(500).json({ error: 'Failed to update Product Fabric metafields.' });
