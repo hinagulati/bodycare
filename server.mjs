@@ -135,7 +135,7 @@ const extractFabricValue = (htmlContent) => {
 const processProductsBatch = async (batchSize) => {
   let processedCount = 0;
   let hasMoreProducts = true;
-  let pageNumber = 1; // Start from the first page
+  let pageNumber = 2; // Start from the first page
 
   while (hasMoreProducts) {
     console.log(`Processing batch ${pageNumber}...`);
