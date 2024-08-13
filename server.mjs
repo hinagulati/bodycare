@@ -51,7 +51,7 @@ const fetchFromShopify = async (url, options = {}) => {
 };
 
 // Function to get products with cursor-based pagination
-const getProducts = async (lastProductId = '7963525021854', limit = 50) => {
+const getProducts = async (lastProductId = '7963538849950', limit = 50) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
   if (lastProductId) {
     url += `&since_id=${lastProductId}`;
@@ -113,7 +113,7 @@ const createProductMetafield = async (productId, fabricValue) => {
       body: JSON.stringify(createPayload)
     });
 
-    console.log('Create response:', response.data); // Log the create response
+    //console.log('Create response:', response.data); // Log the create response
     return response.data.metafield;
   } catch (error) {
     console.error('Error creating metafield:', error);
@@ -142,7 +142,7 @@ const extractFabricValue = (htmlContent) => {
 const processProducts = async (limit = 250) => {
   let processedCount = 0;
   let hasMoreProducts = true;
-  let lastProductId = '7963525021854';
+  let lastProductId = '7963538849950';
   const processedProductIds = []; // Array to store processed product IDs
 
   while (hasMoreProducts && processedCount < limit) {
@@ -160,15 +160,15 @@ const processProducts = async (limit = 250) => {
         const metafields = await getProductMetafields(product.id);
         const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
         const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
- console.log(specificationsMetafield);
+ //console.log(specificationsMetafield);
       if (specificationsMetafield) {
     const fabricValue = extractFabricValue(specificationsMetafield.value);
-    console.log("fabricValue:", fabricValue);
+    //console.log("fabricValue:", fabricValue);
 
     if (fabricValue && fabricValue.trim() !== "") {
         if (productFabricMetafield) {
-            console.log("Updating productFabricMetafield");
-            await updateProductMetafield(productFabricMetafield.id, fabricValue);
+            //console.log("Updating productFabricMetafield");
+            //await updateProductMetafield(productFabricMetafield.id, fabricValue);
             console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
         } else {
             console.log("Creating productFabricMetafield");
