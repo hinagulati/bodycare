@@ -51,7 +51,7 @@ const fetchFromShopify = async (url, options = {}) => {
 };
 
 // Function to get products with cursor-based pagination
-const getProducts = async (lastProductId = null, limit = 1000) => {
+const getProducts = async (lastProductId = null, limit = 250) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
   if (lastProductId) {
     url += `&since_id=${lastProductId}`;
@@ -139,7 +139,7 @@ const extractFabricValue = (htmlContent) => {
 
 
 // Function to process a batch of products
-const processProducts = async (limit = 1000, startAfter = null) => {
+const processProducts = async (limit = 250, startAfter = null) => {
   let processedCount = 0;
   let hasMoreProducts = true;
   let lastProductId = startAfter;
@@ -217,7 +217,7 @@ const processProducts = async (limit = 1000, startAfter = null) => {
 
 // Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
-  const limit = parseInt(req.query.limit, 10) || 1000; // Default to 100 products if not specified
+  const limit = parseInt(req.query.limit, 10) || 250; // Default to 100 products if not specified
   const startAfter = req.query.startAfter || null; // Optional startAfter parameter
 
   try {
