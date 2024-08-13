@@ -139,7 +139,7 @@ const extractFabricValue = (htmlContent) => {
 
 
 // Function to process a batch of products
-const processProducts = async (limit = 30) => {
+const processProducts = async (limit = 100) => {
   let processedCount = 0;
   let hasMoreProducts = true;
   let lastProductId = null;
@@ -217,7 +217,7 @@ const processProducts = async (limit = 30) => {
 
 // Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
-  const limit = parseInt(req.query.limit, 10) || 30; // Default to 50 products if not specified
+  const limit = parseInt(req.query.limit, 10) || 100; // Default to 50 products if not specified
 
   try {
     await processProducts(limit);
