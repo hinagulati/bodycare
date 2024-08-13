@@ -137,7 +137,7 @@ const extractFabricValue = (htmlContent) => {
 };
 
 // Function to process a batch of products
-const processProducts = async (limit = 50) => {
+const processProducts = async (limit = 30) => {
   let processedCount = 0;
   let hasMoreProducts = true;
   let lastProductId = null;
@@ -159,7 +159,7 @@ const processProducts = async (limit = 50) => {
         const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
         const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
  console.log(specificationsMetafield);
-        if (specificationsMetafield!=null) {
+        if (specificationsMetafield) {
          
           const fabricValue = extractFabricValue(specificationsMetafield.value);
   console.log("extractFabricValue1 More products");
@@ -213,7 +213,7 @@ const processProducts = async (limit = 50) => {
 
 // Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
-  const limit = parseInt(req.query.limit, 10) || 50; // Default to 50 products if not specified
+  const limit = parseInt(req.query.limit, 10) || 30; // Default to 50 products if not specified
 
   try {
     await processProducts(limit);
