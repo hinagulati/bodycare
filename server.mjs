@@ -126,15 +126,17 @@ const extractFabricValue = (htmlContent) => {
   const $ = cheerio.load(htmlContent);
   let fabric = '';
 
-  $('#tab-attribute .attribute tbody tr').each((index, element) => {
+  // Adjusted selector to match the structure provided
+  $('table.attribute tbody tr').each((index, element) => {
     const cells = $(element).find('td');
-    if (cells.eq(0).text() === 'Fabric') {
-      fabric = cells.eq(1).text();
+    if (cells.eq(0).text().trim() === 'Fabric') {
+      fabric = cells.eq(1).text().trim();
     }
   });
 
   return fabric;
 };
+
 
 // Function to process a batch of products
 const processProducts = async (limit = 30) => {
