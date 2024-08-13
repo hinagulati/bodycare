@@ -159,22 +159,24 @@ const processProducts = async (limit = 30) => {
         const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
         const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
  console.log(specificationsMetafield);
-        if (specificationsMetafield) {
-         
-          const fabricValue = extractFabricValue(specificationsMetafield.value);
-  console.log("extractFabricValue1 More products");
-         
-            console.log("fabricValue More products");
-            if (productFabricMetafield) {
-              console.log("productFabricMetafield More products");
-              await updateProductMetafield(productFabricMetafield.id, fabricValue);
-              console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
-            } else {
-              await createProductMetafield(product.id, fabricValue);
-              console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
-            }
-         
+      if (specificationsMetafield) {
+    const fabricValue = extractFabricValue(specificationsMetafield.value);
+    console.log("fabricValue:", fabricValue);
+
+    if (fabricValue && fabricValue.trim() !== "") {
+        if (productFabricMetafield) {
+            console.log("Updating productFabricMetafield");
+            await updateProductMetafield(productFabricMetafield.id, fabricValue);
+            console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
+        } else {
+            console.log("Creating productFabricMetafield");
+            await createProductMetafield(product.id, fabricValue);
+            console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
         }
+    } else {
+        console.log(`Skipping product ID ${product.id} (Title: ${product.title}) due to empty fabricValue.`);
+    }
+}
 
         // Log the processed product ID and title
         processedProductIds.push({ id: product.id, title: product.title });
