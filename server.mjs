@@ -51,7 +51,7 @@ const fetchFromShopify = async (url, options = {}) => {
 };
 
 // Function to get products with cursor-based pagination
-const getProducts = async (lastProductId = null, limit = 50) => {
+const getProducts = async (lastProductId = null, limit = 1000) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
   if (lastProductId) {
     url += `&since_id=${lastProductId}`;
@@ -139,14 +139,14 @@ const extractFabricValue = (htmlContent) => {
 
 
 // Function to process a batch of products
-const processProducts = async (limit = 100) => {
+const processProducts = async (limit = 1000, startAfter = null) => {
   let processedCount = 0;
   let hasMoreProducts = true;
-  let lastProductId = null;
+  let lastProductId = startAfter;
   const processedProductIds = []; // Array to store processed product IDs
 
   while (hasMoreProducts && processedCount < limit) {
-    console.log("More products");
+    console.log("Processing more products...");
     try {
       const { data, headers } = await getProducts(lastProductId, limit);
       const products = data.products;
@@ -160,25 +160,25 @@ const processProducts = async (limit = 100) => {
         const metafields = await getProductMetafields(product.id);
         const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
         const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
- console.log(specificationsMetafield);
-      if (specificationsMetafield) {
-    const fabricValue = extractFabricValue(specificationsMetafield.value);
-    console.log("fabricValue:", fabricValue);
+        
+        if (specificationsMetafield) {
+          const fabricValue = extractFabricValue(specificationsMetafield.value);
+          console.log("fabricValue:", fabricValue);
 
-    if (fabricValue && fabricValue.trim() !== "") {
-        if (productFabricMetafield) {
-            console.log("Updating productFabricMetafield");
-            await updateProductMetafield(productFabricMetafield.id, fabricValue);
-            console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
-        } else {
-            console.log("Creating productFabricMetafield");
-            await createProductMetafield(product.id, fabricValue);
-            console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
+          if (fabricValue && fabricValue.trim() !== "") {
+            if (productFabricMetafield) {
+              console.log("Updating productFabricMetafield");
+              await updateProductMetafield(productFabricMetafield.id, fabricValue);
+              console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
+            } else {
+              console.log("Creating productFabricMetafield");
+              await createProductMetafield(product.id, fabricValue);
+              console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
+            }
+          } else {
+            console.log(`Skipping product ID ${product.id} (Title: ${product.title}) due to empty fabricValue.`);
+          }
         }
-    } else {
-        console.log(`Skipping product ID ${product.id} (Title: ${product.title}) due to empty fabricValue.`);
-    }
-}
 
         // Log the processed product ID and title
         processedProductIds.push({ id: product.id, title: product.title });
@@ -217,10 +217,11 @@ const processProducts = async (limit = 100) => {
 
 // Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
-  const limit = parseInt(req.query.limit, 10) || 100; // Default to 50 products if not specified
+  const limit = parseInt(req.query.limit, 10) || 1000; // Default to 100 products if not specified
+  const startAfter = req.query.startAfter || null; // Optional startAfter parameter
 
   try {
-    await processProducts(limit);
+    await processProducts(limit, startAfter);
     res.json({ message: `Product Fabric metafields updated successfully for ${limit} products.` });
   } catch (error) {
     console.error('Error updating Product Fabric metafields:', error);
