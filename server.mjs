@@ -50,13 +50,9 @@ const fetchFromShopify = async (url, options = {}) => {
   }
 };
 
-// Function to get products with cursor-based pagination
-const getProducts = async (pageInfo = null, limit = 250) => {
-  let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
-  if (pageInfo) {
-    url += `&page_info=${encodeURIComponent(pageInfo)}`;
-  }
-
+// Function to get products with a fixed limit
+const getProducts = async (limit = 250) => {
+  const url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
   const response = await fetchFromShopify(url);
   return response;
 };
@@ -135,15 +131,15 @@ const extractFabricValue = (htmlContent) => {
 };
 
 // Function to process a batch of products
-const processProducts = async (limit = 250, pageInfo = null) => {
+const processProductsBatch = async (batchSize) => {
   let processedCount = 0;
   let hasMoreProducts = true;
-  const processedProductIds = []; // Array to store processed product IDs
+  let pageNumber = 1; // Start from the first page
 
-  while (hasMoreProducts && processedCount < limit) {
-    console.log("Processing more products...");
+  while (hasMoreProducts) {
+    console.log(`Processing batch ${pageNumber}...`);
     try {
-      const { data, headers } = await getProducts(pageInfo, limit);
+      const { data } = await getProducts(batchSize);
       const products = data.products;
 
       if (products.length === 0) {
@@ -152,7 +148,7 @@ const processProducts = async (limit = 250, pageInfo = null) => {
       }
 
       for (const product of products) {
-        if (processedCount >= limit) {
+        if (processedCount >= batchSize) {
           hasMoreProducts = false;
           break;
         }
@@ -179,11 +175,10 @@ const processProducts = async (limit = 250, pageInfo = null) => {
         }
 
         // Log the processed product ID and title
-        processedProductIds.push({ id: product.id, title: product.title });
         processedCount++;
 
         // Handling rate limiting by checking Shopify's API call limits
-        const apiCallLimit = headers.get('X-Shopify-Shop-Api-Call-Limit');
+        const apiCallLimit = response.headers.get('X-Shopify-Shop-Api-Call-Limit');
         if (apiCallLimit) {
           const [usedCalls, maxCalls] = apiCallLimit.split('/').map(Number);
           if (usedCalls >= maxCalls - 2) {
@@ -193,43 +188,24 @@ const processProducts = async (limit = 250, pageInfo = null) => {
         }
       }
 
-      // Check if there are more products to process
-      const linkHeader = headers.get('link');
-      if (linkHeader && linkHeader.includes('rel="next"')) {
-        const nextPageLink = linkHeader.split(',').find(link => link.includes('rel="next"'));
-        if (nextPageLink) {
-          const match = nextPageLink.match(/page_info=([^&]*)/);
-          pageInfo = match ? decodeURIComponent(match[1]) : null;
-        } else {
-          hasMoreProducts = false;
-        }
-      } else {
-        hasMoreProducts = false;
-      }
+      // Move to the next page
+      pageNumber++;
     } catch (error) {
       console.error('Error processing products:', error);
       hasMoreProducts = false;
     }
   }
 
-  // Log the list of processed products
-  console.log(`Processed ${processedCount} products successfully. Product details:`);
-  processedProductIds.forEach(product => {
-    console.log(`ID: ${product.id}, Title: ${product.title}`);
-  });
-
-  // Return pageInfo to be used by the client
-  return pageInfo;
+  console.log(`Processed ${processedCount} products successfully.`);
 };
 
 // Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
-  const limit = parseInt(req.query.limit, 10) || 250; // Default to 250 products if not specified
-  const pageInfo = req.query.pageInfo || null;
+  const batchSize = parseInt(req.query.batchSize, 10) || 250; // Default to 250 products if not specified
 
   try {
-    const newPageInfo = await processProducts(limit, pageInfo);
-    res.json({ message: `Product Fabric metafields updated successfully for ${limit} products.`, pageInfo: newPageInfo });
+    await processProductsBatch(batchSize);
+    res.json({ message: `Product Fabric metafields updated successfully for batch size of ${batchSize}.` });
   } catch (error) {
     console.error('Error updating product fabric:', error);
     res.status(500).json({ error: 'Error updating product fabric' });
