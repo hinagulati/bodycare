@@ -4,17 +4,21 @@ import cors from 'cors';
 import * as cheerio from 'cheerio';
 
 const app = express();
+
+// Enable CORS for all origins
 app.use(cors());
 
-// Shopify store credentials
-const store = '3931fc-56';
+// Your Shopify store credentials
+const store = '3931fc-56'; // Replace with your actual store subdomain
 const apiKey = '9f021b4d77cce9c6844781c82d4b2b7d';
 const password = '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';
 
+// Create an authorization header for Shopify API
 const createAuthHeader = () => {
   return 'Basic ' + Buffer.from(`${apiKey}:${password}`).toString('base64');
 };
 
+// Function to fetch data from Shopify API with rate limiting
 const fetchFromShopify = async (url, options = {}) => {
   try {
     const response = await fetch(url, {
@@ -26,20 +30,19 @@ const fetchFromShopify = async (url, options = {}) => {
       }
     });
 
-    const text = await response.text();
+    const text = await response.text(); // Read the response text
     if (!response.ok) {
       if (response.status === 429) {
         console.warn('Rate limit exceeded. Retrying after 1 second...');
         await new Promise(resolve => setTimeout(resolve, 1000));
-        return fetchFromShopify(url, options);
+        return fetchFromShopify(url, options); // Retry the request
       }
       throw new Error(`Failed to fetch data: ${response.statusText}. Response body: ${text}`);
     }
 
     return {
       data: JSON.parse(text),
-      headers: response.headers,
-      links: response.headers.get('link') // Fetch link headers for pagination
+      headers: response.headers
     };
   } catch (error) {
     console.error('Fetch error:', error);
@@ -47,21 +50,25 @@ const fetchFromShopify = async (url, options = {}) => {
   }
 };
 
-const getProducts = async (limit = 250, pageInfo = null) => {
+// Function to get products with cursor-based pagination
+const getProducts = async (lastProductId = null, limit = 50) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
-  if (pageInfo) {
-    url += `&page_info=${pageInfo}`;
+  if (lastProductId) {
+    url += `&since_id=${lastProductId}`;
   }
+
   const response = await fetchFromShopify(url);
   return response;
 };
 
+// Function to get product metafields
 const getProductMetafields = async (productId) => {
   const url = `https://${store}.myshopify.com/admin/api/2023-01/products/${productId}/metafields.json`;
   const response = await fetchFromShopify(url);
   return response.data.metafields;
 };
 
+// Function to update product metafield
 const updateProductMetafield = async (metafieldId, fabricValue) => {
   const updatePayload = {
     "metafield": {
@@ -78,6 +85,7 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
       body: JSON.stringify(updatePayload)
     });
 
+    console.log('Update response:', response.data); // Log the update response
     return response.data.metafield;
   } catch (error) {
     console.error('Error updating metafield:', error);
@@ -85,6 +93,7 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
   }
 };
 
+// Function to create a new product metafield
 const createProductMetafield = async (productId, fabricValue) => {
   const createPayload = {
     "metafield": {
@@ -104,6 +113,7 @@ const createProductMetafield = async (productId, fabricValue) => {
       body: JSON.stringify(createPayload)
     });
 
+    console.log('Create response:', response.data); // Log the create response
     return response.data.metafield;
   } catch (error) {
     console.error('Error creating metafield:', error);
@@ -111,10 +121,12 @@ const createProductMetafield = async (productId, fabricValue) => {
   }
 };
 
+// Function to extract fabric value from HTML content
 const extractFabricValue = (htmlContent) => {
   const $ = cheerio.load(htmlContent);
   let fabric = '';
 
+  // Adjusted selector to match the structure provided
   $('table.attribute tbody tr').each((index, element) => {
     const cells = $(element).find('td');
     if (cells.eq(0).text().trim() === 'Fabric') {
@@ -125,40 +137,22 @@ const extractFabricValue = (htmlContent) => {
   return fabric;
 };
 
-const getNextPageInfo = (linkHeader) => {
-  if (!linkHeader) return null;
 
-  const links = linkHeader.split(',').map(link => link.trim());
-  const nextLink = links.find(link => link.includes('rel="next"'));
-
-  if (nextLink) {
-    const match = nextLink.match(/<(.*?)>/);
-    if (match) {
-      const url = new URL(match[1]);
-      return url.searchParams.get('page_info');
-    }
-  }
-
-  return null;
-};
-
-const processProductsBatch = async (batchSize, pageInfo = null) => {
+// Function to process a batch of products
+const processProducts = async (limit = 500) => {
   let processedCount = 0;
   let hasMoreProducts = true;
+  let lastProductId = null;
+  const processedProductIds = []; // Array to store processed product IDs
 
-  while (hasMoreProducts) {
-    console.log(`Processing batch...`);
+  while (hasMoreProducts && processedCount < limit) {
+    console.log("More products");
     try {
-      const { data, links } = await getProducts(batchSize, pageInfo);
+      const { data, headers } = await getProducts(lastProductId, limit);
       const products = data.products;
 
-      if (products.length === 0) {
-        hasMoreProducts = false;
-        break;
-      }
-
       for (const product of products) {
-        if (processedCount >= batchSize) {
+        if (processedCount >= limit) {
           hasMoreProducts = false;
           break;
         }
@@ -166,27 +160,32 @@ const processProductsBatch = async (batchSize, pageInfo = null) => {
         const metafields = await getProductMetafields(product.id);
         const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
         const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
+ console.log(specificationsMetafield);
+      if (specificationsMetafield) {
+    const fabricValue = extractFabricValue(specificationsMetafield.value);
+    console.log("fabricValue:", fabricValue);
 
-        if (specificationsMetafield) {
-          const fabricValue = extractFabricValue(specificationsMetafield.value);
-          console.log("fabricValue:", fabricValue);
-
-          if (fabricValue && fabricValue.trim() !== "") {
-            if (productFabricMetafield) {
-              await updateProductMetafield(productFabricMetafield.id, fabricValue);
-              console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
-            } else {
-              await createProductMetafield(product.id, fabricValue);
-              console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
-            }
-          } else {
-            console.log(`Skipping product ID ${product.id} (Title: ${product.title}) due to empty fabricValue.`);
-          }
+    if (fabricValue && fabricValue.trim() !== "") {
+        if (productFabricMetafield) {
+            console.log("Updating productFabricMetafield");
+            await updateProductMetafield(productFabricMetafield.id, fabricValue);
+            console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
+        } else {
+            console.log("Creating productFabricMetafield");
+            await createProductMetafield(product.id, fabricValue);
+            console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
         }
+    } else {
+        console.log(`Skipping product ID ${product.id} (Title: ${product.title}) due to empty fabricValue.`);
+    }
+}
 
+        // Log the processed product ID and title
+        processedProductIds.push({ id: product.id, title: product.title });
         processedCount++;
 
-        const apiCallLimit = links.get('X-Shopify-Shop-Api-Call-Limit');
+        // Handling rate limiting by checking Shopify's API call limits
+        const apiCallLimit = headers.get('X-Shopify-Shop-Api-Call-Limit');
         if (apiCallLimit) {
           const [usedCalls, maxCalls] = apiCallLimit.split('/').map(Number);
           if (usedCalls >= maxCalls - 2) {
@@ -196,9 +195,11 @@ const processProductsBatch = async (batchSize, pageInfo = null) => {
         }
       }
 
-      // Check for next page
-      pageInfo = getNextPageInfo(links);
-      if (!pageInfo) {
+      // Check if there are more products to process
+      const linkHeader = headers.get('link');
+      if (linkHeader && linkHeader.includes('rel="next"')) {
+        lastProductId = products[products.length - 1].id;
+      } else {
         hasMoreProducts = false;
       }
     } catch (error) {
@@ -207,23 +208,28 @@ const processProductsBatch = async (batchSize, pageInfo = null) => {
     }
   }
 
-  console.log(`Processed ${processedCount} products successfully.`);
+  // Log the list of processed products
+  console.log(`Processed ${processedCount} products successfully. Product details:`);
+  processedProductIds.forEach(product => {
+    console.log(`ID: ${product.id}, Title: ${product.title}`);
+  });
 };
 
+// Define an API endpoint to trigger the update for a specific number of products
 app.get('/api/update-product-fabric', async (req, res) => {
-  const batchSize = parseInt(req.query.batchSize, 10) || 250;
-  const pageInfo = req.query.page || null;
+  const limit = parseInt(req.query.limit, 10) || 500; // Default to 50 products if not specified
 
   try {
-    await processProductsBatch(batchSize, pageInfo);
-    res.json({ message: `Product Fabric metafields updated successfully for batch size of ${batchSize}.`, pageInfo: pageInfo });
+    await processProducts(limit);
+    res.json({ message: `Product Fabric metafields updated successfully for ${limit} products.` });
   } catch (error) {
-    console.error('Error updating product fabric:', error);
-    res.status(500).json({ error: 'Error updating product fabric' });
+    console.error('Error updating Product Fabric metafields:', error);
+    res.status(500).json({ error: 'Failed to update Product Fabric metafields.' });
   }
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+// Start the server
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
