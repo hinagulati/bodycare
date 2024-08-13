@@ -125,6 +125,23 @@ const extractFabricValue = (htmlContent) => {
   return fabric;
 };
 
+const getNextPageInfo = (linkHeader) => {
+  if (!linkHeader) return null;
+
+  const links = linkHeader.split(',').map(link => link.trim());
+  const nextLink = links.find(link => link.includes('rel="next"'));
+
+  if (nextLink) {
+    const match = nextLink.match(/<(.*?)>/);
+    if (match) {
+      const url = new URL(match[1]);
+      return url.searchParams.get('page_info');
+    }
+  }
+
+  return null;
+};
+
 const processProductsBatch = async (batchSize, pageInfo = null) => {
   let processedCount = 0;
   let hasMoreProducts = true;
@@ -180,7 +197,7 @@ const processProductsBatch = async (batchSize, pageInfo = null) => {
       }
 
       // Check for next page
-      pageInfo = new URL(links.next).searchParams.get('page_info');
+      pageInfo = getNextPageInfo(links);
       if (!pageInfo) {
         hasMoreProducts = false;
       }
