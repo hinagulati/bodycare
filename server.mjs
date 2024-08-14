@@ -51,7 +51,7 @@ const fetchFromShopify = async (url, options = {}) => {
 };
 
 // Function to get products with cursor-based pagination
-const getProducts = async (lastProductId = '7963566440606', limit = 50) => {
+const getProducts = async (lastProductId = null, limit = 50) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
   if (lastProductId) {
     url += `&since_id=${lastProductId}`;
@@ -69,11 +69,11 @@ const getProductMetafields = async (productId) => {
 };
 
 // Function to update product metafield
-const updateProductMetafield = async (metafieldId, fabricValue) => {
+const updateProductMetafield = async (metafieldId, value) => {
   const updatePayload = {
     "metafield": {
       "id": metafieldId,
-      "value": fabricValue,
+      "value": value,
       "type": "single_line_text_field"
     }
   };
@@ -85,7 +85,6 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
       body: JSON.stringify(updatePayload)
     });
 
-    console.log('Update response:', response.data); // Log the update response
     return response.data.metafield;
   } catch (error) {
     console.error('Error updating metafield:', error);
@@ -94,12 +93,12 @@ const updateProductMetafield = async (metafieldId, fabricValue) => {
 };
 
 // Function to create a new product metafield
-const createProductMetafield = async (productId, fabricValue) => {
+const createProductMetafield = async (productId, key, value) => {
   const createPayload = {
     "metafield": {
       "namespace": "custom",
-      "key": "product_fabric",
-      "value": fabricValue,
+      "key": key,
+      "value": value,
       "type": "single_line_text_field",
       "owner_id": productId,
       "owner_resource": "product"
@@ -113,7 +112,6 @@ const createProductMetafield = async (productId, fabricValue) => {
       body: JSON.stringify(createPayload)
     });
 
-    //console.log('Create response:', response.data); // Log the create response
     return response.data.metafield;
   } catch (error) {
     console.error('Error creating metafield:', error);
@@ -121,32 +119,38 @@ const createProductMetafield = async (productId, fabricValue) => {
   }
 };
 
-// Function to extract fabric value from HTML content
-const extractFabricValue = (htmlContent) => {
+// Function to extract multiple attribute values from HTML content
+const extractAttributeValues = (htmlContent) => {
   const $ = cheerio.load(htmlContent);
-  let fabric = '';
+  const attributes = {};
 
-  // Adjusted selector to match the structure provided
   $('table.attribute tbody tr').each((index, element) => {
     const cells = $(element).find('td');
-    if (cells.eq(0).text().trim() === 'Fabric') {
-      fabric = cells.eq(1).text().trim();
-    }
+    const key = cells.eq(0).text().trim();
+    const value = cells.eq(1).text().trim();
+
+    if (key === 'Coverage') attributes.coverage = value;
+    if (key === 'Fit') attributes.fit = value;
+    if (key === 'Padded') attributes.padded = value;
+    if (key === 'Pattern') attributes.pattern = value;
+    if (key === 'Strap Style') attributes.strapStyle = value;
+    if (key === 'Wired/Non-Wired') attributes.wiredNonWired = value;
+    if (key === 'Pack') attributes.pack = value;
+    if (key === 'Rise') attributes.rise = value;
+    if (key === 'Fabric') attributes.fabric = value;
   });
 
-  return fabric;
+  return attributes;
 };
-
 
 // Function to process a batch of products
 const processProducts = async (limit = 250) => {
   let processedCount = 0;
   let hasMoreProducts = true;
-  let lastProductId = '7963566440606';
+  let lastProductId = null;
   const processedProductIds = []; // Array to store processed product IDs
 
   while (hasMoreProducts && processedCount < limit) {
-    console.log("More products");
     try {
       const { data, headers } = await getProducts(lastProductId, limit);
       const products = data.products;
@@ -159,32 +163,43 @@ const processProducts = async (limit = 250) => {
 
         const metafields = await getProductMetafields(product.id);
         const specificationsMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_specifications');
-        const productFabricMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === 'product_fabric');
- //console.log(specificationsMetafield);
-      if (specificationsMetafield) {
-    const fabricValue = extractFabricValue(specificationsMetafield.value);
-    //console.log("fabricValue:", fabricValue);
 
-    if (fabricValue && fabricValue.trim() !== "") {
-        if (productFabricMetafield) {
-            //console.log("Updating productFabricMetafield");
-            //await updateProductMetafield(productFabricMetafield.id, fabricValue);
-            console.log(`Updated product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
-        } else {
-            console.log("Creating productFabricMetafield");
-            await createProductMetafield(product.id, fabricValue);
-            console.log(`Created product fabric metafield for product ID ${product.id} (Title: ${product.title})`);
+        if (specificationsMetafield) {
+          const attributes = extractAttributeValues(specificationsMetafield.value);
+
+          for (const [key, value] of Object.entries(attributes)) {
+            if (value && value.trim() !== "") {
+              const metafieldKey = {
+                coverage: 'coverage',
+                fit: 'fit',
+                padded: 'padded',
+                pattern: 'pattern',
+                strapStyle: 'strap_style',
+                wiredNonWired: 'wired_non_wired',
+                pack: 'pack',
+                rise: 'rise',
+                fabric: 'product_fabric'
+              }[key];
+
+              if (!metafieldKey) continue;
+
+              const existingMetafield = metafields.find(mf => mf.namespace === 'custom' && mf.key === metafieldKey);
+              if (existingMetafield) {
+                //await updateProductMetafield(existingMetafield.id, value);
+                console.log(`Updated ${metafieldKey} metafield for product ID ${product.id} (Title: ${product.title})`);
+              } else {
+                await createProductMetafield(product.id, metafieldKey, value);
+                console.log(`Created ${metafieldKey} metafield for product ID ${product.id} (Title: ${product.title})`);
+              }
+            } else {
+              console.log(`Skipping ${key} for product ID ${product.id} (Title: ${product.title}) due to empty value.`);
+            }
+          }
         }
-    } else {
-        console.log(`Skipping product ID ${product.id} (Title: ${product.title}) due to empty fabricValue.`);
-    }
-}
 
-        // Log the processed product ID and title
         processedProductIds.push({ id: product.id, title: product.title });
         processedCount++;
 
-        // Handling rate limiting by checking Shopify's API call limits
         const apiCallLimit = headers.get('X-Shopify-Shop-Api-Call-Limit');
         if (apiCallLimit) {
           const [usedCalls, maxCalls] = apiCallLimit.split('/').map(Number);
@@ -195,7 +210,6 @@ const processProducts = async (limit = 250) => {
         }
       }
 
-      // Check if there are more products to process
       const linkHeader = headers.get('link');
       if (linkHeader && linkHeader.includes('rel="next"')) {
         lastProductId = products[products.length - 1].id;
@@ -208,7 +222,6 @@ const processProducts = async (limit = 250) => {
     }
   }
 
-  // Log the list of processed products
   console.log(`Processed ${processedCount} products successfully. Product details:`);
   processedProductIds.forEach(product => {
     console.log(`ID: ${product.id}, Title: ${product.title}`);
