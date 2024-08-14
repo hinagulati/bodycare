@@ -51,7 +51,7 @@ const fetchFromShopify = async (url, options = {}) => {
 };
 
 // Function to get products with cursor-based pagination
-const getProducts = async (lastProductId = '8011434688670', limit = 50) => {
+const getProducts = async (lastProductId = '7998274535582', limit = 50) => {
   let url = `https://${store}.myshopify.com/admin/api/2023-01/products.json?limit=${limit}`;
   if (lastProductId) {
     url += `&since_id=${lastProductId}`;
@@ -147,7 +147,7 @@ const extractAttributeValues = (htmlContent) => {
 const processProducts = async (limit = 250) => {
   let processedCount = 0;
   let hasMoreProducts = true;
-  let lastProductId = '8011434688670';
+  let lastProductId = '7998274535582';
   const processedProductIds = []; // Array to store processed product IDs
 
   while (hasMoreProducts && processedCount < limit) {
